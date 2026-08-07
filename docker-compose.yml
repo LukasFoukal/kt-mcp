@@ -1,0 +1,24 @@
+# Local build file: `docker compose build` produces the image the Portainer
+# stack (deploy/stack.yml) runs. Keep service shape in sync with it.
+#
+# This project has its own lifecycle and is deliberately NOT part of the
+# caltrack stack — it shares nothing with the CalTrack API or its databases.
+services:
+  kt-mcp:
+    image: kt-mcp:latest
+    build: .
+    environment:
+      KT_EMAIL: ${KT_EMAIL}
+      KT_PASSWORD: ${KT_PASSWORD}
+      MCP_AUTH_PASSWORD: ${MCP_AUTH_PASSWORD}
+      PUBLIC_URL: ${PUBLIC_URL}
+      PORT: 8092
+      STATE_DIR: /data
+    volumes:
+      - kt-mcp-state:/data
+    # Bound to loopback: the only way in is through the Cloudflare tunnel.
+    ports:
+      - "127.0.0.1:8092:8092"
+
+volumes:
+  kt-mcp-state:

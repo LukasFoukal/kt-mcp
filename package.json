@@ -1,0 +1,33 @@
+{
+  "name": "kt-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Self-hosted remote MCP server exposing kaloricketabulky.cz food logging to AI agents",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stany9g/kt-mcp.git"
+  },
+  "bugs": "https://github.com/stany9g/kt-mcp/issues",
+  "homepage": "https://github.com/stany9g/kt-mcp#readme",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test \"dist/**/*.test.js\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "express": "^5.2.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.13.3",
+    "typescript": "^5.9.3"
+  }
+}

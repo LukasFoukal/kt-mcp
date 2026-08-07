@@ -1,0 +1,72 @@
+# Runs the locally-built image (see ../docker-compose.yml) as plain docker
+# compose — NOT a Portainer stack. Build, then (re)deploy from kt-mcp/deploy/:
+#
+#   docker compose build                                      (in kt-mcp/)
+#   docker compose -p kt-mcp --env-file ../.env -f stack.yml up -d
+#
+# The -p kt-mcp matters: the default project name ("deploy") would recreate
+# the state volume from scratch and lose the connector's OAuth state.
+#
+# Secrets (KT_EMAIL, KT_PASSWORD, MCP_AUTH_PASSWORD, PUBLIC_URL, MCP_HOSTNAME,
+# TUNNEL_TOKEN) come from ../.env — never from this file.
+#
+# Request path:
+#   Cloudflare  →  cloudflared (host network)  →  127.0.0.1:80  →  nginx  →  kt-mcp:8092
+#
+# cloudflared dials out to Cloudflare, so no inbound port is opened on the host
+# or the router. nginx publishes on loopback only, because the tunnel is
+# configured to reach http://localhost:80.
+services:
+  kt-mcp:
+    image: kt-mcp:latest
+    container_name: kt-mcp
+    restart: unless-stopped
+    environment:
+      KT_EMAIL: ${KT_EMAIL}
+      KT_PASSWORD: ${KT_PASSWORD}
+      MCP_AUTH_PASSWORD: ${MCP_AUTH_PASSWORD}
+      PUBLIC_URL: ${PUBLIC_URL}
+      PORT: 8092
+      STATE_DIR: /data
+    volumes:
+      - kt-mcp-state:/data
+    networks:
+      - default
+    # No `ports:` — only nginx talks to this, over the stack's internal network.
+
+  nginx:
+    image: nginx:alpine
+    container_name: kt-mcp-nginx
+    restart: unless-stopped
+    environment:
+      # Substituted into the template at container start.
+      MCP_HOSTNAME: ${MCP_HOSTNAME}
+      # Without this filter envsubst would also eat nginx's own $variables
+      # ($host, $remote_addr, …) and produce an empty, silently broken config.
+      NGINX_ENVSUBST_FILTER: '^MCP_'
+    volumes:
+      - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+    # Loopback only: the tunnel is the sole way in from outside.
+    ports:
+      - "127.0.0.1:80:80"
+    depends_on:
+      - kt-mcp
+    networks:
+      - default
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: kt-mcp-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    # Host network so the tunnel's configured origin, http://localhost:80,
+    # resolves to nginx's loopback publication rather than to this container.
+    network_mode: host
+    depends_on:
+      - nginx
+
+volumes:
+  kt-mcp-state:
+
+networks:
+  default:

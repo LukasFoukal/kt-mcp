@@ -1,0 +1,70 @@
+# Edge config for kt-mcp.
+#
+# The Cloudflare tunnel is configured to reach http://localhost:80, so this
+# nginx publishes on the host loopback and cloudflared runs in host network
+# mode. TLS is terminated by Cloudflare; this hop is plain HTTP over loopback.
+#
+# If you already run a shared edge nginx on this host, move this server block
+# there (upstream stays kt-mcp:8092 over a shared network) and drop the nginx
+# service from this stack — both cannot own port 80.
+
+# The client IP the app should rate-limit on.
+#
+# CF-Connecting-IP is set by Cloudflare and overwritten on every request, so a
+# caller cannot forge it. Prefer it; fall back to the peer address for direct
+# loopback access. We must NOT append to a caller-supplied X-Forwarded-For:
+# doing so lets an attacker prepend arbitrary IPs and get a fresh rate-limit
+# bucket per request, which defeats brute-force protection on /authorize.
+map $http_cf_connecting_ip $kt_client_ip {
+    ""      $remote_addr;
+    default $http_cf_connecting_ip;
+}
+
+# Anything that isn't our hostname gets a flat 404, so this nginx never
+# accidentally becomes a catch-all for the tunnel.
+server {
+    listen 80 default_server;
+    server_name _;
+    return 404;
+}
+
+server {
+    listen 80;
+    server_name ${MCP_HOSTNAME};
+
+    # Docker's embedded DNS, resolved per-request so a kt-mcp restart doesn't
+    # leave nginx holding a stale container IP until it is itself reloaded.
+    resolver 127.0.0.11 valid=30s;
+    set $kt_mcp kt-mcp;
+
+    # MCP responses may be Server-Sent Events. Buffering them would hold
+    # events until the stream closed, which stalls tool calls. The MCP server
+    # also sends `X-Accel-Buffering: no`; this is the belt to that braces.
+    proxy_buffering off;
+    proxy_cache off;
+    chunked_transfer_encoding on;
+
+    # A tool call can legitimately run longer than nginx's 60s default while
+    # the upstream site is being queried.
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+
+    client_max_body_size 4m;
+
+    location / {
+        proxy_pass http://$kt_mcp:8092;
+        proxy_http_version 1.1;
+
+        # The MCP server derives its OAuth issuer from PUBLIC_URL, but still
+        # validates Origin — pass the real values through unchanged.
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $kt_client_ip;
+        # Overwrite, never append — see the map above.
+        proxy_set_header X-Forwarded-For   $kt_client_ip;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host  $host;
+
+        # Do not let a stale Connection: keep-alive break SSE.
+        proxy_set_header Connection "";
+    }
+}
