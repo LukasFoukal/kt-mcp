@@ -330,20 +330,56 @@ export function registerTools(server: McpServer, kt: KtClient): void {
   );
 
   server.registerTool(
-    'get_day_activities',
+    'get_day_entries',
     {
-      title: 'List logged activities',
+      title: 'List diary entries for a day',
       description:
-        "List the activities already logged in the user's diary for one day, with duration and the calories the site credited. " +
-        'Use this when the user asks what exercise they have logged or how much they burned, and before logging to avoid duplicating an entry they already made.',
+        "List every entry in the user's diary for one day: foods and recipes grouped by meal, and activities, each with its entry id, amount and calories. " +
+        'Use this when the user asks what exactly they logged, to find an entry to delete with delete_diary_entry, and before logging to avoid duplicating something already there. ' +
+        'For totals and remaining calories use get_day_summary instead.',
       inputSchema: {
         date: z.string().optional().describe('Date in dd.MM.yyyy format (Czech style). Omit for today.'),
       },
     },
-    guard('get_day_activities', async ({ date }) => {
-      const activities = await kt.getDayActivities(date);
-      const total = activities.reduce((sum, a) => sum + (a.energy ?? 0), 0);
-      return json({ date: date ?? todayCzech(), activities, total_energy: total });
+    guard('get_day_entries', async ({ date }) => {
+      const { foods, activities } = await kt.getDayEntries(date);
+      return json({
+        date: date ?? todayCzech(),
+        foods: foods.map(f => ({ ...f, meal: MEALS[f.meal] })),
+        activities,
+      });
+    }),
+  );
+
+  server.registerTool(
+    'delete_diary_entry',
+    {
+      title: 'Delete a diary entry',
+      description:
+        "Remove one food, recipe or activity entry from the user's diary, e.g. to fix a mistake or a duplicate. Get the entry id from get_day_entries for the same date. " +
+        'This cannot be undone, so unless the user named the exact entry, confirm which one they mean before calling it. Only one entry per call.',
+      inputSchema: {
+        entry_id: z.string().min(1).describe('Entry id from get_day_entries (not a food or activity id from search).'),
+        date: z.string().optional().describe('Date the entry is on, in dd.MM.yyyy format. Omit for today.'),
+      },
+      annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: true },
+    },
+    guard('delete_diary_entry', async ({ entry_id, date }) => {
+      // Look the id up first: it tells us which delete route applies, and it
+      // stops a food id from search, or an entry on another day, from being
+      // passed straight to a delete.
+      const { foods, activities } = await kt.getDayEntries(date);
+      const food = foods.find(f => f.id === entry_id);
+      const activity = activities.find(a => a.id === entry_id);
+      if (food) {
+        await kt.deleteFoodEntry(entry_id);
+        return json({ deleted: true, kind: 'food', title: food.title, amount: food.amount, meal: MEALS[food.meal], date: date ?? todayCzech() });
+      }
+      if (activity) {
+        await kt.deleteActivityEntry(entry_id);
+        return json({ deleted: true, kind: 'activity', title: activity.title, duration: activity.duration, date: date ?? todayCzech() });
+      }
+      return json({ deleted: false, reason: `No diary entry with that id on ${date ?? todayCzech()}. Call get_day_entries for the right date.` });
     }),
   );
 

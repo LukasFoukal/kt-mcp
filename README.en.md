@@ -55,7 +55,8 @@ Once connected, food logging stops being a chore of tapping through search scree
 | `search_activity` | Find an activity (walking, running, cycling…) in the Czech database. |
 | `log_activity` | Log an activity for a number of minutes; the site computes the calories from your weight. |
 | `log_custom_activity` | Log an activity with calories you already know, e.g. from a watch. |
-| `get_day_activities` | List the activities logged on a day, with duration and calories burned. |
+| `get_day_entries` | List every entry of a day: foods by meal and activities, with ids, amounts and calories. |
+| `delete_diary_entry` | Delete one food, recipe or activity entry, e.g. a mistake or a duplicate. |
 | `log_weight` | Record your weight for a day (one value per day; logging again replaces it). |
 
 ### Recipes

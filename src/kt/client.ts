@@ -100,6 +100,22 @@ export interface DiaryActivity {
   energyUnit: string;
 }
 
+export interface DiaryFood {
+  id: string;
+  title: string;
+  /** Amount as the site displays it, e.g. "kus (40 g)" or "120 x 1 g". */
+  amount: string;
+  energy: number | null;
+  energyUnit: string;
+  meal: MealId;
+  isRecipe: boolean;
+}
+
+export interface DayEntries {
+  foods: DiaryFood[];
+  activities: DiaryActivity[];
+}
+
 export class KtError extends Error {}
 
 /**
@@ -456,21 +472,77 @@ export class KtClient {
     });
   }
 
-  /** The activities logged on one day, with the energy the site computed. */
-  async getDayActivities(date?: string): Promise<DiaryActivity[]> {
+  /**
+   * Every entry in one day's diary, food and activity alike, with the entry
+   * ids the delete calls need. Food comes grouped by meal slot (`times`),
+   * activities as a flat list.
+   */
+  async getDayEntries(date?: string): Promise<DayEntries> {
     const day = date === undefined ? todayCzech() : assertCzechDate(date);
     const diary = (await this.authed(`/user/diary/${day}/get?format=json`)) as Record<string, unknown>;
+    const times = diary['times'];
     const activities = diary['activities'];
-    if (!Array.isArray(activities)) throw new KtError('diary: response had no activities list');
-    return activities
-      .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object')
-      .map(a => ({
-        id: String(a['id']),
-        title: String(a['title'] ?? ''),
-        duration: String(a['unit'] ?? ''),
-        energy: parseCzechNumber(a['energy']),
-        energyUnit: typeof a['energyUnit'] === 'string' ? a['energyUnit'] : 'kcal',
-      }));
+    if (!Array.isArray(times) || !Array.isArray(activities)) {
+      throw new KtError('diary: response had no times or activities list');
+    }
+
+    const foods: DiaryFood[] = [];
+    for (const slot of times) {
+      if (!slot || typeof slot !== 'object') continue;
+      const s = slot as Record<string, unknown>;
+      const meal = String(s['id']);
+      if (!(meal in MEALS) || !Array.isArray(s['foodstuff'])) continue;
+      for (const f of s['foodstuff']) {
+        if (!f || typeof f !== 'object') continue;
+        const e = f as Record<string, unknown>;
+        foods.push({
+          id: String(e['id']),
+          title: String(e['title'] ?? ''),
+          amount: String(e['unit'] ?? ''),
+          energy: parseCzechNumber(e['energy']),
+          energyUnit: typeof e['energyUnit'] === 'string' ? e['energyUnit'] : 'kcal',
+          meal: meal as MealId,
+          isRecipe: e['isRecipe'] === true,
+        });
+      }
+    }
+
+    return {
+      foods,
+      activities: activities
+        .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object')
+        .map(a => ({
+          id: String(a['id']),
+          title: String(a['title'] ?? ''),
+          duration: String(a['unit'] ?? ''),
+          energy: parseCzechNumber(a['energy']),
+          energyUnit: typeof a['energyUnit'] === 'string' ? a['energyUnit'] : 'kcal',
+        })),
+    };
+  }
+
+  /** The activities logged on one day, with the energy the site computed. */
+  async getDayActivities(date?: string): Promise<DiaryActivity[]> {
+    return (await this.getDayEntries(date)).activities;
+  }
+
+  /**
+   * Deletes one diary entry. The site's delete routes take a comma-separated
+   * id list in the path, so the id is checked to be a single bare hex guid:
+   * a model-supplied "a,b,c" must not turn one delete into several.
+   */
+  private async deleteEntry(kind: 'foodstuff' | 'activity', entryId: string): Promise<void> {
+    if (!/^[0-9a-f]{16,32}$/i.test(entryId)) throw new KtError(`invalid diary entry id "${entryId}"`);
+    await this.authed(`/user/diary/${kind}/delete/${entryId}?format=json`);
+  }
+
+  /** Removes a food, recipe or own-food entry from the diary. */
+  async deleteFoodEntry(entryId: string): Promise<void> {
+    await this.deleteEntry('foodstuff', entryId);
+  }
+
+  async deleteActivityEntry(entryId: string): Promise<void> {
+    await this.deleteEntry('activity', entryId);
   }
 
   /**
