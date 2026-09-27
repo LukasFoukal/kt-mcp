@@ -330,6 +330,24 @@ export function registerTools(server: McpServer, kt: KtClient): void {
   );
 
   server.registerTool(
+    'get_day_activities',
+    {
+      title: 'List logged activities',
+      description:
+        "List the activities already logged in the user's diary for one day, with duration and the calories the site credited. " +
+        'Use this when the user asks what exercise they have logged or how much they burned, and before logging to avoid duplicating an entry they already made.',
+      inputSchema: {
+        date: z.string().optional().describe('Date in dd.MM.yyyy format (Czech style). Omit for today.'),
+      },
+    },
+    guard('get_day_activities', async ({ date }) => {
+      const activities = await kt.getDayActivities(date);
+      const total = activities.reduce((sum, a) => sum + (a.energy ?? 0), 0);
+      return json({ date: date ?? todayCzech(), activities, total_energy: total });
+    }),
+  );
+
+  server.registerTool(
     'log_weight',
     {
       title: 'Log body weight',

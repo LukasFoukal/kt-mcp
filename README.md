@@ -55,6 +55,7 @@ Jakmile je agent připojený, přestane být zapisování jídel otravným prokl
 | `search_activity` | Najde aktivitu (chůze, běh, kolo…) v české databázi. |
 | `log_activity` | Zapíše aktivitu na zadaný počet minut; kalorie spočítá web podle vaší váhy. |
 | `log_custom_activity` | Zapíše aktivitu s kaloriemi, které znáte, třeba z hodinek. |
+| `get_day_activities` | Vypíše aktivity zapsané v daném dni, s délkou a spálenými kaloriemi. |
 | `log_weight` | Zapíše váhu k danému dni (jedna hodnota na den, nový zápis ji přepíše). |
 
 ### Recepty
