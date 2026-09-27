@@ -185,6 +185,58 @@ Step 3 is required: `PUBLIC_URL` is the OAuth issuer and the RFC 8707 resource
 identifier, so tokens issued under the old hostname are correctly rejected
 after the move.
 
+### Alternative: Azure Container Apps
+
+If you would rather not look after a machine, `deploy/azure/` deploys the
+server to Azure Container Apps. Azure terminates HTTPS, so there is no nginx
+and no Cloudflare tunnel. All you need is the
+[Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) (2.53 or
+newer) and `KT_EMAIL`, `KT_PASSWORD` and `MCP_AUTH_PASSWORD` in `.env` or in
+the environment:
+
+```bash
+az login
+./deploy/azure/deploy.sh
+```
+
+The script creates the resource group, registry, storage and environment,
+builds the image inside Azure (`az acr build`, no local Docker needed), deploys
+the app and runs `scripts/verify-deployment.sh`. It finishes by printing the
+connector URL. Ship a new version by running the same command again.
+
+What `deploy/azure/main.bicep` sets up, and why:
+
+- **Exactly one replica, always on.** Tokens live in a single JSON file cached
+  in process memory. A second replica would overwrite it, and scaling to zero
+  would put a cold start in front of scheduled logging.
+- **`/data` on Azure Files**, so a redeploy doesn't force reconnecting the
+  connector. The share is mounted `0600` for the `node` user.
+- **Secrets as Container App secrets.** They reach Azure through
+  `main.bicepparam` from environment variables, never on a command line.
+- **Rate limiting works unchanged.** The Container Apps ingress is one proxy
+  hop and appends the real client IP to `X-Forwarded-For`, which is what
+  `trust proxy 1` expects. Put another proxy in front (Front Door, say) and
+  that setting has to change.
+
+Optional variables: `AZURE_RESOURCE_GROUP` (default `kt-mcp`),
+`AZURE_LOCATION` (`westeurope`), `AZURE_APP_NAME` (`kt-mcp`) and
+`AZURE_PUBLIC_URL`. Expect a few dollars a month, most of it the Basic-tier
+registry.
+
+**Custom domain.** Without one the server runs at
+`https://kt-mcp.<something>.<region>.azurecontainerapps.io`. For your own
+domain, create the DNS records `az containerapp hostname add` prints, bind the
+domain with a managed certificate, and redeploy with the new URL:
+
+```bash
+az containerapp hostname add -g kt-mcp -n kt-mcp --hostname kt.example.com
+az containerapp hostname bind -g kt-mcp -n kt-mcp --hostname kt.example.com \
+  --environment kt-mcp-env --validation-method CNAME
+AZURE_PUBLIC_URL=https://kt.example.com ./deploy/azure/deploy.sh
+```
+
+As with the tunnel, remove and re-add the connector in your agent afterwards.
+
 ### Stuck, or nowhere to run it?
 
 If you hit a wall self-hosting, open a [GitHub issue](../../issues) — happy to

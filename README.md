@@ -184,6 +184,57 @@ Krok 3 je nutný: `PUBLIC_URL` je OAuth issuer a identifikátor zdroje podle
 RFC 8707, takže tokeny vydané pod starým hostname jsou po přesunu správně
 odmítnuty.
 
+### Alternativa: Azure Container Apps
+
+Pokud nechcete spravovat vlastní stroj, `deploy/azure/` nasadí server do
+Azure Container Apps. HTTPS zajistí Azure, takže odpadá nginx i Cloudflare
+tunel. Potřebujete jen [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli)
+(verze 2.53 nebo novější) a `KT_EMAIL`, `KT_PASSWORD` a `MCP_AUTH_PASSWORD`
+v `.env` nebo v prostředí:
+
+```bash
+az login
+./deploy/azure/deploy.sh
+```
+
+Skript vytvoří resource group, registr, úložiště a prostředí, sestaví image
+přímo v Azure (`az acr build`, lokální Docker není potřeba), nasadí aplikaci
+a spustí `scripts/verify-deployment.sh`. Na konci vypíše URL konektoru. Nová
+verze se nasazuje stejným příkazem.
+
+Co šablona `deploy/azure/main.bicep` nastavuje a proč:
+
+- **Právě jedna replika, stále zapnutá.** Tokeny jsou v jednom JSON souboru
+  drženém v paměti procesu. Druhá replika by ho přepisovala a škálování na nulu
+  by zpomalilo naplánované zápisy studeným startem.
+- **`/data` na Azure Files**, takže redeploy nevynutí nové připojení
+  konektoru. Sdílení je připojené s právy `0600` pro uživatele `node`.
+- **Tajné hodnoty jako secrets Container App.** Do Azure putují přes
+  `main.bicepparam` z proměnných prostředí, nikdy přes příkazovou řádku.
+- **Rate limiting funguje beze změny.** Ingress Container Apps je jeden proxy
+  hop a skutečnou IP klienta přidává na konec `X-Forwarded-For`, což odpovídá
+  `trust proxy 1`. Pokud před aplikaci přidáte další proxy (např. Front Door),
+  musí se tohle nastavení upravit.
+
+Volitelné proměnné: `AZURE_RESOURCE_GROUP` (výchozí `kt-mcp`),
+`AZURE_LOCATION` (`westeurope`), `AZURE_APP_NAME` (`kt-mcp`) a
+`AZURE_PUBLIC_URL`. Náklady jsou řádově jednotky dolarů měsíčně, většinu tvoří
+registr (tier Basic).
+
+**Vlastní doména.** Bez ní server běží na
+`https://kt-mcp.<něco>.<region>.azurecontainerapps.io`. Pro vlastní doménu
+vytvořte v DNS záznamy, které vypíše `az containerapp hostname add`, doménu
+navažte se spravovaným certifikátem a nasaďte znovu s novou URL:
+
+```bash
+az containerapp hostname add -g kt-mcp -n kt-mcp --hostname kt.example.com
+az containerapp hostname bind -g kt-mcp -n kt-mcp --hostname kt.example.com \
+  --environment kt-mcp-env --validation-method CNAME
+AZURE_PUBLIC_URL=https://kt.example.com ./deploy/azure/deploy.sh
+```
+
+Stejně jako u tunelu pak konektor v agentovi odeberte a přidejte znovu.
+
 ### Zaseklí, nebo nemáte kde hostovat?
 
 Pokud při vlastním hostování narazíte, založte [GitHub issue](../../issues) —
