@@ -35,6 +35,8 @@ Once connected, food logging stops being a chore of tapping through search scree
 
 - **Photograph a recipe.** Snap a recipe from a cookbook or a screenshot from the web and say *"save this as a meal"*. The agent reads the ingredients, finds each one in the database, and creates a reusable saved recipe — one entry to log next time you cook it. You can edit on the way in: *"swap the cream for white yogurt and halve the sugar."*
 
+- **Log exercise and weight.** "I walked briskly for 40 minutes this morning" finds the activity and logs it; the site computes the calories from your weight. If your watch already told you the calories, those are logged as given. And "I weigh 82.4 today" records your weight.
+
 - **Ask how your day is going.** "How many calories do I have left?" reads today's totals straight from the diary.
 
 ## Tools
@@ -50,6 +52,21 @@ Once connected, food logging stops being a chore of tapping through search scree
 | `list_my_meals` | List saved recipes with their ids and total energy. |
 | `log_meal` | Log a whole saved recipe into the diary as one entry. |
 | `delete_meal` | Delete a saved recipe. |
+| `search_activity` | Find an activity (walking, running, cycling…) in the Czech database. |
+| `log_activity` | Log an activity for a number of minutes; the site computes the calories from your weight. |
+| `log_custom_activity` | Log an activity with calories you already know, e.g. from a watch. |
+| `get_day_entries` | List every entry of a day: foods by meal and activities, with ids, amounts and calories. |
+| `delete_diary_entry` | Delete one food, recipe or activity entry, e.g. a mistake or a duplicate. |
+| `edit_diary_entry` | Change a food's amount or unit, an activity's duration, or move a food to another meal. |
+| `copy_meal` | Copy a meal (e.g. yesterday's breakfast) to another day or meal, whole or only selected foods. |
+| `log_own_food` | Log something not in the database with your own values (e.g. from a label). Creates a diary entry only, not a new database food. |
+| `add_note` | Add a note to the whole day or to one meal. |
+| `get_usual_items` | List favourite and most used foods and activities. |
+| `set_favorite` | Add a food or activity to favourites, or remove it. |
+| `get_period_overview` | Overview of several days (a week by default): calories, target, activity, macros and drinks per day and on average. |
+| `list_templates` / `create_template` | List saved day templates, or save a whole day as a new one. |
+| `apply_template` / `delete_template` | Write a saved template into the diary on chosen dates, or delete it. |
+| `log_weight` | Record your weight for a day (one value per day; logging again replaces it). |
 
 ### Recipes
 
