@@ -57,6 +57,15 @@ Jakmile je agent připojený, přestane být zapisování jídel otravným prokl
 | `log_custom_activity` | Zapíše aktivitu s kaloriemi, které znáte, třeba z hodinek. |
 | `get_day_entries` | Vypíše všechny záznamy dne: jídla podle denních jídel i aktivity, s id, množstvím a kaloriemi. |
 | `delete_diary_entry` | Smaže jeden záznam jídla, receptu nebo aktivity, třeba chybný nebo duplicitní. |
+| `edit_diary_entry` | Změní množství nebo jednotku jídla, délku aktivity, nebo přesune jídlo do jiného denního jídla. |
+| `copy_meal` | Zkopíruje jídlo (třeba včerejší snídani) na jiný den nebo do jiného denního jídla, celé nebo jen vybrané potraviny. |
+| `log_own_food` | Zapíše jídlo, které v databázi není, s vlastními hodnotami (např. z etikety). Vytvoří jen záznam v deníku, ne novou potravinu v databázi. |
+| `add_note` | Přidá poznámku k celému dni nebo k jednomu jídlu. |
+| `get_usual_items` | Vypíše oblíbené a nejpoužívanější potraviny a aktivity. |
+| `set_favorite` | Přidá potravinu nebo aktivitu do oblíbených, nebo ji z nich odebere. |
+| `get_period_overview` | Přehled za více dní (výchozí týden): kalorie, cíl, aktivita, makra a pitný režim po dnech i v průměru. |
+| `list_templates` / `create_template` | Vypíše uložené jídelníčky, nebo uloží celý den jako nový. |
+| `apply_template` / `delete_template` | Zapíše uložený jídelníček na zvolené dny, nebo ho smaže. |
 | `log_weight` | Zapíše váhu k danému dni (jedna hodnota na den, nový zápis ji přepíše). |
 
 ### Recepty
