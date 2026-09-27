@@ -9,7 +9,7 @@
 
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { GRAM_UNIT, KtClient, MEALS, type MealId, todayCzech } from '../kt/client.js';
+import { baseUnitOf, KtClient, KtError, MEALS, type MealId, todayCzech } from '../kt/client.js';
 
 const MEAL_IDS = Object.keys(MEALS) as [MealId, ...MealId[]];
 
@@ -19,6 +19,28 @@ const mealDescription = `Which meal slot to file the entry under: ${Object.entri
 
 const dateDescription =
   'Date in dd.MM.yyyy format (Czech style). Omit for today. Use this to log something the user ate on a previous day.';
+
+const unitDescription =
+  "Unit id from get_food_portions. Omit to use the food's base unit: grams for solid food, millilitres for drinks.";
+
+/**
+ * Picks the unit for a food quantity. Without an explicit unit this is the
+ * food's own base unit, never a hard-coded gram: drinks are measured in
+ * millilitres and have no gram unit at all, so the site rejects a gram entry
+ * for them ("Potravinu se nepodařilo zapsat"). An explicit unit is checked
+ * against the food's list so a wrong one fails with the valid choices.
+ */
+async function resolveUnit(kt: KtClient, foodId: string, unitId?: string): Promise<string> {
+  const detail = await kt.getFoodDetail(foodId);
+  const unit = unitId ?? baseUnitOf(detail.units);
+  if (!detail.units.some(u => u.id === unit)) {
+    throw new KtError(
+      `${detail.title}: unit ${unit} is not valid for this food. Available: ` +
+        detail.units.map(u => `${u.title} (${u.id})`).join(', '),
+    );
+  }
+  return unit;
+}
 
 /** Tool results are text; JSON keeps them unambiguous for the model. */
 function json(value: unknown) {
@@ -92,8 +114,8 @@ export function registerTools(server: McpServer, kt: KtClient): void {
         title: detail.title,
         default: { amount: detail.defaultAmount, unit_id: detail.defaultUnitId },
         units: detail.units,
-        grams_unit_id: GRAM_UNIT,
-        note: `Use grams_unit_id (${GRAM_UNIT}) with an amount in grams when the user gave a weight.`,
+        base_unit_id: baseUnitOf(detail.units),
+        note: 'Use base_unit_id with an amount in grams (solid food) or millilitres (drinks) when the user gave a weight or volume.',
       });
     }),
   );
@@ -107,15 +129,15 @@ export function registerTools(server: McpServer, kt: KtClient): void {
         'Use this when the user asks what something contains, or to confirm a portion before logging it. The site does the scaling, so the numbers match its own diary exactly.',
       inputSchema: {
         food_id: z.string().min(1).describe('The food id returned by search_food.'),
-        amount: z.number().positive().describe('How many units. With the grams unit this is a weight in grams.'),
+        amount: z.number().positive().describe('How many units. With the base unit this is grams for solid food or millilitres for drinks.'),
         unit_id: z
           .string()
           .optional()
-          .describe(`Unit id from get_food_portions. Omit to use grams (${GRAM_UNIT}).`),
+          .describe(unitDescription),
       },
     },
     guard('get_food_nutrition', async ({ food_id, amount, unit_id }) => {
-      return json(await kt.getNutrition(food_id, amount, unit_id ?? GRAM_UNIT));
+      return json(await kt.getNutrition(food_id, amount, await resolveUnit(kt, food_id, unit_id)));
     }),
   );
 
@@ -128,18 +150,18 @@ export function registerTools(server: McpServer, kt: KtClient): void {
         'Returns the nutrition that was logged.',
       inputSchema: {
         food_id: z.string().min(1).describe('The food id returned by search_food.'),
-        amount: z.number().positive().describe('How many units. With the grams unit this is a weight in grams.'),
+        amount: z.number().positive().describe('How many units. With the base unit this is grams for solid food or millilitres for drinks.'),
         unit_id: z
           .string()
           .optional()
-          .describe(`Unit id from get_food_portions. Omit to use grams (${GRAM_UNIT}).`),
+          .describe(unitDescription),
         meal: z.enum(MEAL_IDS).describe(mealDescription),
         date: z.string().optional().describe(dateDescription),
       },
       annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
     guard('log_food', async ({ food_id, amount, unit_id, meal, date }) => {
-      const unit = unit_id ?? GRAM_UNIT;
+      const unit = await resolveUnit(kt, food_id, unit_id);
       await kt.logFood({ foodId: food_id, amount, unitId: unit, meal, date });
       // The write has landed; a failed read-back must not become a tool error,
       // or the model retries and logs the food twice.
