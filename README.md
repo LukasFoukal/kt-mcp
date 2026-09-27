@@ -35,6 +35,8 @@ Jakmile je agent připojený, přestane být zapisování jídel otravným prokl
 
 - **Vyfoťte recept.** Vyfoťte recept z kuchařky nebo screenshot z webu a řekněte *„ulož mi to jako jídlo"*. Agent přečte suroviny, každou najde v databázi a vytvoří uložený recept — příště zalogujete jedním záznamem. Cestou můžete upravovat: *„vyměň smetanu za bílý jogurt a dej poloviční cukr."*
 
+- **Zapisujte pohyb a váhu.** „Ráno jsem šel 40 minut rychlou chůzí" vyhledá aktivitu a zapíše ji; kalorie spočítá web podle vaší váhy. Když znáte spálené kalorie z hodinek, zapíšou se přesně ty. A „dnes vážím 82,4" zapíše váhu k dnešku.
+
 - **Ptejte se, jak vám jde den.** „Kolik kalorií mi dnes zbývá?" přečte denní součty přímo z jídelníčku.
 
 ## Nástroje
@@ -50,6 +52,10 @@ Jakmile je agent připojený, přestane být zapisování jídel otravným prokl
 | `list_my_meals` | Vypíše uložené recepty s jejich id a celkovou energií. |
 | `log_meal` | Zaloguje celý uložený recept jako jeden záznam. |
 | `delete_meal` | Smaže uložený recept. |
+| `search_activity` | Najde aktivitu (chůze, běh, kolo…) v české databázi. |
+| `log_activity` | Zapíše aktivitu na zadaný počet minut; kalorie spočítá web podle vaší váhy. |
+| `log_custom_activity` | Zapíše aktivitu s kaloriemi, které znáte, třeba z hodinek. |
+| `log_weight` | Zapíše váhu k danému dni (jedna hodnota na den, nový zápis ji přepíše). |
 
 ### Recepty
 

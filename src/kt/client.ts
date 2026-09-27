@@ -84,6 +84,22 @@ export interface MealSummary {
   portions: number;
 }
 
+export interface ActivityHit {
+  id: string;
+  title: string;
+  /** The site's category, e.g. "Chůze". */
+  category: string | null;
+}
+
+export interface DiaryActivity {
+  id: string;
+  title: string;
+  /** Duration as the site displays it, e.g. "30 min". */
+  duration: string;
+  energy: number | null;
+  energyUnit: string;
+}
+
 export class KtError extends Error {}
 
 /**
@@ -108,6 +124,11 @@ export function parseCzechNumber(value: unknown): number | null {
   if (normalised === '') return null;
   const n = Number(normalised);
   return Number.isFinite(n) ? n : null;
+}
+
+/** The inverse of parseCzechNumber: 97.3 → "97,3". */
+export function formatCzechDecimal(value: number): string {
+  return String(value).replace('.', ',');
 }
 
 /** The site formats dates as dd.MM.yyyy everywhere. */
@@ -236,27 +257,47 @@ export class KtClient {
   }
 
   /**
-   * Full-text or EAN search. Works anonymously, so no login is forced here.
-   * A 13-digit barcode resolves to the matching product.
+   * The site's combined autocomplete, which returns foods, activities and
+   * recipes in one list tagged by `clazz`. Works anonymously.
    */
-  async search(query: string, limit = 10): Promise<FoodHit[]> {
+  private async autocomplete(query: string, clazz: string): Promise<Record<string, unknown>[]> {
     const { text } = await this.request(
       `/autocomplete/foodstuff-activity-meal?format=json&query=${encodeURIComponent(query)}`,
     );
     const data = this.parseEnvelope(text, 'search');
     if (!Array.isArray(data)) throw new KtError('search: expected an array of results');
+    return data.filter(
+      (row): row is Record<string, unknown> => !!row && typeof row === 'object' && (row as Record<string, unknown>)['clazz'] === clazz,
+    );
+  }
 
-    return data
-      .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object' && (row as Record<string, unknown>)['clazz'] === 'foodstuff')
-      .slice(0, limit)
-      .map(row => ({
-        id: String(row['id']),
-        title: String(row['title']),
-        energyPer100: parseCzechNumber(row['value']),
-        energyUnit: typeof row['energyUnit'] === 'string' ? row['energyUnit'] : 'kcal',
-        baseUnit: typeof row['unit'] === 'string' ? row['unit'] : 'g',
-        brand: typeof row['brandName'] === 'string' ? row['brandName'] : null,
-      }));
+  /**
+   * Full-text or EAN search. Works anonymously, so no login is forced here.
+   * A 13-digit barcode resolves to the matching product.
+   */
+  async search(query: string, limit = 10): Promise<FoodHit[]> {
+    return (await this.autocomplete(query, 'foodstuff')).slice(0, limit).map(row => ({
+      id: String(row['id']),
+      title: String(row['title']),
+      energyPer100: parseCzechNumber(row['value']),
+      energyUnit: typeof row['energyUnit'] === 'string' ? row['energyUnit'] : 'kcal',
+      baseUnit: typeof row['unit'] === 'string' ? row['unit'] : 'g',
+      brand: typeof row['brandName'] === 'string' ? row['brandName'] : null,
+    }));
+  }
+
+  /**
+   * Activity search. The result's `value` is deliberately not exposed: it is
+   * an intensity factor whose scaling does not match what the site actually
+   * logs (it came out about a quarter lower in testing), and the site
+   * computes the real figure from the user's weight when the entry is added.
+   */
+  async searchActivities(query: string, limit = 10): Promise<ActivityHit[]> {
+    return (await this.autocomplete(query, 'activity')).slice(0, limit).map(row => ({
+      id: String(row['id']),
+      title: String(row['title']),
+      category: typeof row['type'] === 'string' ? row['type'] : null,
+    }));
   }
 
   /**
@@ -356,6 +397,95 @@ export class KtClient {
   /** Raw daily summary. Shape is not fully documented, so it is passed through. */
   async getDaySummary(date?: string): Promise<unknown> {
     return this.authed(`/statistic/summary/${date === undefined ? todayCzech() : assertCzechDate(date)}/get?format=json`);
+  }
+
+  // ---------------------------------------------------------------------
+  // Activity and weight
+  // ---------------------------------------------------------------------
+
+  /**
+   * Logs an activity for a duration. As with food, the site's own form is
+   * fetched and posted back whole with only duration and date overridden;
+   * the site then computes the energy from the user's current weight.
+   *
+   * `activityId` "0" is the site's custom activity, which needs a title and
+   * a total energy instead of relying on the database.
+   */
+  private async addActivity(args: {
+    activityId: string;
+    minutes: number;
+    date?: string;
+    custom?: { title: string; energyKcal: number };
+  }): Promise<void> {
+    const form = (await this.authed(
+      `/user/activity/add/form/${encodeURIComponent(args.activityId)}?format=json`,
+    )) as Record<string, unknown>;
+    // Like the food form, this echoes any guid back; a real activity always
+    // carries its title, so a missing one means the id is unknown.
+    if (!args.custom && typeof form['title'] !== 'string') {
+      throw new KtError(`log activity: unknown activity id ${args.activityId}`);
+    }
+
+    const payload: Record<string, unknown> = { ...form };
+    payload['time'] = args.minutes;
+    payload['timeUnit'] = 'min';
+    payload['date'] = args.date === undefined ? todayCzech() : assertCzechDate(args.date);
+    if (args.custom) {
+      payload['title'] = args.custom.title;
+      // The form carries the user's preferred energy unit; the tool always
+      // speaks kcal, so convert for users who switched the site to kJ.
+      payload['energy'] =
+        form['energyUnit'] === 'kj' ? Math.round(args.custom.energyKcal * 4.184) : args.custom.energyKcal;
+    }
+
+    await this.authed('/user/activity/add?format=json&=', { method: 'POST', body: payload });
+  }
+
+  async logActivity(args: { activityId: string; minutes: number; date?: string }): Promise<void> {
+    if (args.activityId === '0') throw new KtError('log activity: use a custom activity for id 0');
+    await this.addActivity(args);
+  }
+
+  /** An activity not in the database, e.g. a workout whose calories came from a watch. */
+  async logCustomActivity(args: { title: string; energyKcal: number; minutes: number; date?: string }): Promise<void> {
+    await this.addActivity({
+      activityId: '0',
+      minutes: args.minutes,
+      date: args.date,
+      custom: { title: args.title, energyKcal: args.energyKcal },
+    });
+  }
+
+  /** The activities logged on one day, with the energy the site computed. */
+  async getDayActivities(date?: string): Promise<DiaryActivity[]> {
+    const day = date === undefined ? todayCzech() : assertCzechDate(date);
+    const diary = (await this.authed(`/user/diary/${day}/get?format=json`)) as Record<string, unknown>;
+    const activities = diary['activities'];
+    if (!Array.isArray(activities)) throw new KtError('diary: response had no activities list');
+    return activities
+      .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object')
+      .map(a => ({
+        id: String(a['id']),
+        title: String(a['title'] ?? ''),
+        duration: String(a['unit'] ?? ''),
+        energy: parseCzechNumber(a['energy']),
+        energyUnit: typeof a['energyUnit'] === 'string' ? a['energyUnit'] : 'kcal',
+      }));
+  }
+
+  /**
+   * Records body weight for a day. The site keeps one weight per date, so
+   * logging again for the same date replaces the value rather than adding a
+   * second one. Its form is a free-text field, sent in Czech decimal format.
+   */
+  async logWeight(args: { kg: number; date?: string }): Promise<void> {
+    await this.authed('/user/weight/add?format=json&=', {
+      method: 'POST',
+      body: {
+        weight: formatCzechDecimal(args.kg),
+        date: args.date === undefined ? todayCzech() : assertCzechDate(args.date),
+      },
+    });
   }
 
   // ---------------------------------------------------------------------

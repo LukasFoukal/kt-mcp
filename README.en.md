@@ -35,6 +35,8 @@ Once connected, food logging stops being a chore of tapping through search scree
 
 - **Photograph a recipe.** Snap a recipe from a cookbook or a screenshot from the web and say *"save this as a meal"*. The agent reads the ingredients, finds each one in the database, and creates a reusable saved recipe — one entry to log next time you cook it. You can edit on the way in: *"swap the cream for white yogurt and halve the sugar."*
 
+- **Log exercise and weight.** "I walked briskly for 40 minutes this morning" finds the activity and logs it; the site computes the calories from your weight. If your watch already told you the calories, those are logged as given. And "I weigh 82.4 today" records your weight.
+
 - **Ask how your day is going.** "How many calories do I have left?" reads today's totals straight from the diary.
 
 ## Tools
@@ -50,6 +52,10 @@ Once connected, food logging stops being a chore of tapping through search scree
 | `list_my_meals` | List saved recipes with their ids and total energy. |
 | `log_meal` | Log a whole saved recipe into the diary as one entry. |
 | `delete_meal` | Delete a saved recipe. |
+| `search_activity` | Find an activity (walking, running, cycling…) in the Czech database. |
+| `log_activity` | Log an activity for a number of minutes; the site computes the calories from your weight. |
+| `log_custom_activity` | Log an activity with calories you already know, e.g. from a watch. |
+| `log_weight` | Record your weight for a day (one value per day; logging again replaces it). |
 
 ### Recipes
 

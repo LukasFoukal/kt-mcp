@@ -2,7 +2,8 @@
  * The tool surface Claude sees.
  *
  * Designed around one flow: "I ate 3 eggs" → search → pick a portion unit →
- * log. Descriptions are prescriptive about *when* to call each tool, because
+ * log. Activities follow the same search → log shape, and weight is a single
+ * write. Descriptions are prescriptive about *when* to call each tool, because
  * that is what drives correct tool selection.
  */
 
@@ -256,6 +257,94 @@ export function registerTools(server: McpServer, kt: KtClient): void {
       if (!before) return json({ deleted: false, reason: 'No saved recipe with that id.' });
       await kt.deleteMeal(meal_id);
       return json({ deleted: true, title: before.title });
+    }),
+  );
+
+  server.registerTool(
+    'search_activity',
+    {
+      title: 'Search activities',
+      description:
+        'Find physical activities in the kaloricketabulky.cz database ("Chůze - 5,0 km/h po rovině", "Běh", "Plavání"). Call this whenever the user mentions exercise, to get the activity id log_activity needs. ' +
+        'The database is Czech, so search with Czech terms ("chůze", "běh", "kolo", "posilování"). Pick the entry whose speed or intensity best matches what the user described.',
+      inputSchema: {
+        query: z.string().min(1).describe('Activity name in Czech.'),
+        limit: z.number().int().min(1).max(25).optional().describe('Maximum results to return. Defaults to 10.'),
+      },
+    },
+    guard('search_activity', async ({ query, limit }) => {
+      const hits = await kt.searchActivities(query, limit ?? 10);
+      if (hits.length === 0) {
+        return json({
+          results: [],
+          hint: 'No matches. Try a more general Czech term, or use log_custom_activity if the user knows the calories burned.',
+        });
+      }
+      return json({ results: hits });
+    }),
+  );
+
+  server.registerTool(
+    'log_activity',
+    {
+      title: 'Log an activity to the diary',
+      description:
+        "Write an activity from the database into the user's diary for a given duration. The site calculates the calories burned from the user's own weight, so do not estimate them. " +
+        'Find the activity id with search_activity first. This writes to their real diary. ' +
+        'If the user already knows the calories (from a watch or a fitness app), use log_custom_activity instead.',
+      inputSchema: {
+        activity_id: z.string().min(1).describe('Activity id from search_activity.'),
+        minutes: z.number().positive().max(1440).describe('Duration in minutes.'),
+        date: z.string().optional().describe('Date in dd.MM.yyyy format (Czech style). Omit for today.'),
+      },
+      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    guard('log_activity', async ({ activity_id, minutes, date }) => {
+      await kt.logActivity({ activityId: activity_id, minutes, date });
+      // Logged; as with food, a failed read-back must not turn into a retry.
+      const activities = await kt.getDayActivities(date).catch(() => null);
+      return json({ logged: true, date: date ?? todayCzech(), minutes, activities_that_day: activities });
+    }),
+  );
+
+  server.registerTool(
+    'log_custom_activity',
+    {
+      title: 'Log an activity with known calories',
+      description:
+        "Write an activity with a calorie figure the user supplies, typically from a sports watch or fitness app (\"Garmin says I burned 450 kcal on a 50-minute run\"). " +
+        'Use log_activity instead when the user did not give a calorie figure. This writes to their real diary.',
+      inputSchema: {
+        title: z.string().min(1).describe('Short name for the activity, e.g. "Běh podle hodinek".'),
+        energy_kcal: z.number().positive().max(10000).describe('Total calories burned, in kcal.'),
+        minutes: z.number().positive().max(1440).describe('Duration in minutes.'),
+        date: z.string().optional().describe('Date in dd.MM.yyyy format (Czech style). Omit for today.'),
+      },
+      annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    guard('log_custom_activity', async ({ title, energy_kcal, minutes, date }) => {
+      await kt.logCustomActivity({ title, energyKcal: energy_kcal, minutes, date });
+      const activities = await kt.getDayActivities(date).catch(() => null);
+      return json({ logged: true, date: date ?? todayCzech(), activities_that_day: activities });
+    }),
+  );
+
+  server.registerTool(
+    'log_weight',
+    {
+      title: 'Log body weight',
+      description:
+        "Record the user's body weight for a day. The site keeps one weight per day, so logging again for the same date replaces that day's value. " +
+        'The weight also drives how many calories the site credits for activities, so keeping it current matters.',
+      inputSchema: {
+        weight_kg: z.number().min(20).max(400).describe('Body weight in kilograms, e.g. 82.4.'),
+        date: z.string().optional().describe('Date in dd.MM.yyyy format (Czech style). Omit for today.'),
+      },
+      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    guard('log_weight', async ({ weight_kg, date }) => {
+      await kt.logWeight({ kg: weight_kg, date });
+      return json({ logged: true, weight_kg, date: date ?? todayCzech() });
     }),
   );
 

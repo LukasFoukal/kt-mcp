@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { formatCzechDate, parseCzechNumber } from './client.js';
+import { formatCzechDate, formatCzechDecimal, parseCzechNumber } from './client.js';
 
 test('parses Czech decimal commas', () => {
   assert.equal(parseCzechNumber('20,43'), 20.43);
@@ -31,4 +31,10 @@ test('returns null rather than a misleading zero for absent values', () => {
 test('formats dates the way the site expects', () => {
   assert.equal(formatCzechDate(new Date(2026, 7, 2)), '02.08.2026');
   assert.equal(formatCzechDate(new Date(2026, 11, 25)), '25.12.2026');
+});
+
+test('formats decimals with a comma, the way the weight form expects', () => {
+  assert.equal(formatCzechDecimal(82.4), '82,4');
+  assert.equal(formatCzechDecimal(80), '80');
+  assert.equal(parseCzechNumber(formatCzechDecimal(97.35)), 97.35);
 });
