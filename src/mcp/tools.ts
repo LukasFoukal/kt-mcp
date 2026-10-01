@@ -593,8 +593,9 @@ export function registerTools(server: McpServer, kt: KtClient): void {
     {
       title: 'Overview of several days',
       description:
-        'Totals for a run of days, one row per day (energy eaten, target, burned by activity, protein, carbs, fat, litres drunk) plus averages over the logged days. ' +
-        'Use this for "how was my week", "average protein this month" and similar questions. Days with nothing logged are listed but left out of the averages.',
+        'Totals for a run of days, one row per day (energy eaten, target, burned by activity, protein, carbs, fat, litres drunk, and every nutrient the user tracks) plus averages over the logged days. ' +
+        "The averages include each tracked nutrient's daily goal (taken from the last day of the period) and how the average compares to it. " +
+        'Use this for "how was my week", "average protein this month", "am I hitting my fibre goal" and similar questions. Days with nothing logged are listed but left out of the averages.',
       inputSchema: {
         end_date: z.string().optional().describe('Last day of the period, dd.MM.yyyy. Omit for today.'),
         days: z.number().int().min(1).max(31).optional().describe('Number of days ending with end_date. Defaults to 7.'),
@@ -609,10 +610,27 @@ export function registerTools(server: McpServer, kt: KtClient): void {
       const logged = rows.filter(r => (r.energy ?? 0) > 0);
       const avg = (pick: (r: DayTotals) => number | null) =>
         logged.length === 0 ? null : Math.round((logged.reduce((sum, r) => sum + (pick(r) ?? 0), 0) / logged.length) * 10) / 10;
+      // Goals can change over a period; the latest day's are the ones the user is working to now.
+      const latest = rows[rows.length - 1]?.nutrients ?? [];
+      const nutrientAverages = latest.map(n => {
+        const average = avg(r => r.nutrients.find(x => x.code === n.code)?.actual ?? null);
+        return {
+          code: n.code,
+          title: n.title,
+          unit: n.unit,
+          average,
+          goal: n.goal,
+          percent_of_goal: average === null || !n.goal ? null : Math.round((average / n.goal) * 100),
+        };
+      });
       return json({
         from: rows[0]?.date,
         to: end,
-        days: rows,
+        // Per-day nutrients as {code: amount}; titles, units and goals are in the averages.
+        days: rows.map(({ nutrients, ...r }) => ({
+          ...r,
+          nutrients: Object.fromEntries(nutrients.map(n => [n.code, n.actual])),
+        })),
         logged_days: logged.length,
         averages_over_logged_days: {
           energy: avg(r => r.energy),
@@ -622,6 +640,7 @@ export function registerTools(server: McpServer, kt: KtClient): void {
           carbs: avg(r => r.carbs),
           fat: avg(r => r.fat),
           drink_litres: avg(r => r.drinkLitres),
+          nutrients: nutrientAverages,
         },
       });
     }),
@@ -727,13 +746,48 @@ export function registerTools(server: McpServer, kt: KtClient): void {
     {
       title: 'Get a day summary',
       description:
-        'Read back totals from the diary for one day — use this when the user asks what they have eaten, how many calories they have left, or how a day went.',
+        'Read back totals from the diary for one day — use this when the user asks what they have eaten, how many calories they have left, or how a day went. ' +
+        'For progress against the daily goals for protein, carbs, fat, fibre and other nutrients, use get_day_progress instead.',
       inputSchema: {
         date: z.string().optional().describe(dateDescription),
       },
     },
     guard('get_day_summary', async ({ date }) => {
       return json({ date: date ?? todayCzech(), summary: await kt.getDaySummary(date) });
+    }),
+  );
+
+  server.registerTool(
+    'get_day_progress',
+    {
+      title: 'Progress against daily goals',
+      description:
+        "Compare one day's intake with the user's daily goals set on the site: energy, protein, carbs, fat, fibre, every other nutrient the user tracks (e.g. sugar, salt, saturated fat, calcium), drinks and weight. " +
+        'Each nutrient comes with actual, goal, remaining (negative once over the goal) and percent. ' +
+        'Use this for "how much protein do I still need today", "am I over on sugar" or when suggesting what to eat next to hit the goals. ' +
+        'Goals are read-only here; the user changes them on the site.',
+      inputSchema: {
+        date: z.string().optional().describe('Date in dd.MM.yyyy format (Czech style). Omit for today.'),
+      },
+    },
+    guard('get_day_progress', async ({ date }) => {
+      const t = await kt.getDayTotals(date ?? todayCzech());
+      // Two decimals: one would round 2.98 l of drinks to 3.
+      const remaining = (goal: number | null, actual: number | null) =>
+        goal === null || actual === null ? null : Math.round((goal - actual) * 100) / 100;
+      return json({
+        date: t.date,
+        energy: {
+          unit: t.energyUnit,
+          eaten: t.energy,
+          burned: t.energyBurned,
+          goal: t.energyTarget,
+          remaining: remaining(t.energyTarget, t.energy),
+        },
+        nutrients: t.nutrients,
+        drinks: { unit: 'l', actual: t.drinkLitres, goal: t.drinkTargetLitres, remaining: remaining(t.drinkTargetLitres, t.drinkLitres) },
+        weight: { unit: 'kg', current: t.weightKg, goal: t.weightTargetKg },
+      });
     }),
   );
 }

@@ -139,6 +139,28 @@ export interface DayTotals {
   fat: number | null;
   /** Litres drunk, which the site counts from logged drinks on its own. */
   drinkLitres: number | null;
+  drinkTargetLitres: number | null;
+  weightKg: number | null;
+  weightTargetKg: number | null;
+  /**
+   * Every nutrient the user tracks on the site, with its daily goal. The
+   * first four (protein, carbs, fat, fibre) are always there; the rest are
+   * whatever the user picked in the site's settings.
+   */
+  nutrients: NutrientProgress[];
+}
+
+export interface NutrientProgress {
+  /** The site's key, e.g. "protein", "carbohydrate", "sugar", "calcium". */
+  code: string;
+  title: string;
+  unit: string;
+  actual: number | null;
+  goal: number | null;
+  /** goal − actual; negative once the goal is exceeded. */
+  remaining: number | null;
+  /** The site's own percentage of the goal reached. */
+  percent: number | null;
 }
 
 export interface NamedItem {
@@ -182,6 +204,61 @@ export function parseCzechNumber(value: unknown): number | null {
   if (normalised === '') return null;
   const n = Number(normalised);
   return Number.isFinite(n) ? n : null;
+}
+
+const round1 = (n: number | null) => (n === null ? null : Math.round(n * 10) / 10);
+
+/**
+ * Parses the diary page's summary panel (`/user/diary/summary/{date}/get`).
+ * Every row in `items` and `itemsDynamic` pairs a display `actual` with a
+ * `goal`, both Czech-formatted strings. Nutrient rows also carry the exact
+ * `actualValue`, but on the energy row it is always 0, so energy comes from
+ * `foodstuffEnergyTotal` instead.
+ */
+export function parseDiarySummary(day: string, data: unknown): DayTotals {
+  const s = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
+  const balance = (s['balance'] ?? {}) as Record<string, unknown>;
+  const items = Array.isArray(s['items']) ? (s['items'] as Record<string, unknown>[]) : [];
+  const dynamic = (Array.isArray(s['itemsDynamic']) ? (s['itemsDynamic'] as unknown[]) : [])
+    .flatMap(group => (Array.isArray(group) ? (group as Record<string, unknown>[]) : []));
+
+  const nutrients: NutrientProgress[] = dynamic
+    .filter(row => typeof row['code'] === 'string')
+    .map(row => {
+      const actual = round1(parseCzechNumber(row['actualValue']) ?? parseCzechNumber(row['actual']));
+      const goal = parseCzechNumber(row['goal']);
+      return {
+        code: row['code'] as string,
+        title: String(row['title'] ?? row['titleShort'] ?? row['code']),
+        unit: typeof row['unit'] === 'string' ? row['unit'] : '',
+        actual,
+        goal,
+        remaining: actual === null || goal === null ? null : round1(goal - actual),
+        percent: typeof row['percent'] === 'number' ? row['percent'] : null,
+      };
+    });
+  const nutrient = (code: string) => nutrients.find(n => n.code === code)?.actual ?? null;
+
+  const energyItem = items.find(i => i['code'] === 'total');
+  // Drinks and weight have no code; the unit is the stable way to tell them apart.
+  const drinkItem = items.find(i => i['unit'] === 'l');
+  const weightItem = items.find(i => i['unit'] === 'kg');
+  return {
+    date: day,
+    energy: parseCzechNumber(s['foodstuffEnergyTotal']),
+    energyTarget: parseCzechNumber(balance['target']) ?? parseCzechNumber(energyItem?.['goal']),
+    energyBurned: parseCzechNumber(s['activityEnergyTotal']),
+    energyUnit: typeof energyItem?.['unit'] === 'string' ? energyItem['unit'] : 'kcal',
+    protein: nutrient('protein'),
+    carbs: nutrient('carbohydrate'),
+    fat: nutrient('fat'),
+    drinkLitres: parseCzechNumber(drinkItem?.['actual']),
+    drinkTargetLitres: parseCzechNumber(drinkItem?.['goal']),
+    weightKg: parseCzechNumber(weightItem?.['actual']),
+    // An unset weight goal comes back as null or "0".
+    weightTargetKg: parseCzechNumber(weightItem?.['goal']) || null,
+    nutrients,
+  };
 }
 
 /** The inverse of parseCzechNumber: 97.3 → "97,3". */
@@ -821,27 +898,7 @@ export class KtClient {
    */
   async getDayTotals(date: string): Promise<DayTotals> {
     const day = assertCzechDate(date);
-    const s = (await this.authed(`/user/diary/summary/${day}/get?format=json`)) as Record<string, unknown>;
-    const balance = (s['balance'] ?? {}) as Record<string, unknown>;
-    const items = Array.isArray(s['items']) ? (s['items'] as Record<string, unknown>[]) : [];
-    const macros = (Array.isArray(s['itemsDynamic']) ? (s['itemsDynamic'] as unknown[]) : [])
-      .flatMap(group => (Array.isArray(group) ? (group as Record<string, unknown>[]) : []));
-    const macro = (code: string) => {
-      const value = parseCzechNumber(macros.find(m => m['code'] === code)?.['actualValue']);
-      return value === null ? null : Math.round(value * 10) / 10;
-    };
-    const energyItem = items.find(i => i['code'] === 'total');
-    return {
-      date: day,
-      energy: parseCzechNumber(s['foodstuffEnergyTotal']),
-      energyTarget: parseCzechNumber(balance['target']),
-      energyBurned: parseCzechNumber(s['activityEnergyTotal']),
-      energyUnit: typeof energyItem?.['unit'] === 'string' ? energyItem['unit'] : 'kcal',
-      protein: macro('protein'),
-      carbs: macro('carbohydrate'),
-      fat: macro('fat'),
-      drinkLitres: parseCzechNumber(items.find(i => i['unit'] === 'l')?.['actual']),
-    };
+    return parseDiarySummary(day, await this.authed(`/user/diary/summary/${day}/get?format=json`));
   }
 
   async listTemplates(): Promise<NamedItem[]> {
