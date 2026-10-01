@@ -37,7 +37,7 @@ Jakmile je agent připojený, přestane být zapisování jídel otravným prokl
 
 - **Zapisujte pohyb a váhu.** „Ráno jsem šel 40 minut rychlou chůzí" vyhledá aktivitu a zapíše ji; kalorie spočítá web podle vaší váhy. Když znáte spálené kalorie z hodinek, zapíšou se přesně ty. A „dnes vážím 82,4" zapíše váhu k dnešku.
 
-- **Ptejte se, jak vám jde den.** „Kolik kalorií mi dnes zbývá?" přečte denní součty přímo z jídelníčku.
+- **Ptejte se, jak vám jde den.** „Kolik kalorií mi dnes zbývá?" přečte denní součty přímo z jídelníčku. A „kolik bílkovin mi ještě chybí?" porovná den s cíli živin, které máte nastavené na webu — agent pak může navrhnout, co sníst, abyste je trefili.
 
 ## Nástroje
 
@@ -48,6 +48,7 @@ Jakmile je agent připojený, přestane být zapisování jídel otravným prokl
 | `get_food_nutrition` | Kalorie a makra pro dané množství, přepočítané samotným webem. Pouze čtení. |
 | `log_food` | Zapíše záznam o jídle do jídelníčku. |
 | `get_day_summary` | Přečte denní součty. |
+| `get_day_progress` | Porovná den s denními cíli z webu: energie, bílkoviny, sacharidy, tuky, vláknina a všechny další sledované živiny (cukry, sůl…), pitný režim a váha — kolik je snědeno, kolik je cíl a kolik zbývá. |
 | `create_meal` | Uloží recept složený z existujících potravin. |
 | `list_my_meals` | Vypíše uložené recepty s jejich id a celkovou energií. |
 | `log_meal` | Zaloguje celý uložený recept jako jeden záznam. |
@@ -63,7 +64,7 @@ Jakmile je agent připojený, přestane být zapisování jídel otravným prokl
 | `add_note` | Přidá poznámku k celému dni nebo k jednomu jídlu. |
 | `get_usual_items` | Vypíše oblíbené a nejpoužívanější potraviny a aktivity. |
 | `set_favorite` | Přidá potravinu nebo aktivitu do oblíbených, nebo ji z nich odebere. |
-| `get_period_overview` | Přehled za více dní (výchozí týden): kalorie, cíl, aktivita, makra a pitný režim po dnech i v průměru. |
+| `get_period_overview` | Přehled za více dní (výchozí týden): kalorie, cíl, aktivita, makra, sledované živiny a pitný režim po dnech i v průměru, včetně průměru vůči cílům živin. |
 | `list_templates` / `create_template` | Vypíše uložené jídelníčky, nebo uloží celý den jako nový. |
 | `apply_template` / `delete_template` | Zapíše uložený jídelníček na zvolené dny, nebo ho smaže. |
 | `log_weight` | Zapíše váhu k danému dni (jedna hodnota na den, nový zápis ji přepíše). |

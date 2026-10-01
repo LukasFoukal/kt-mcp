@@ -37,7 +37,7 @@ Once connected, food logging stops being a chore of tapping through search scree
 
 - **Log exercise and weight.** "I walked briskly for 40 minutes this morning" finds the activity and logs it; the site computes the calories from your weight. If your watch already told you the calories, those are logged as given. And "I weigh 82.4 today" records your weight.
 
-- **Ask how your day is going.** "How many calories do I have left?" reads today's totals straight from the diary.
+- **Ask how your day is going.** "How many calories do I have left?" reads today's totals straight from the diary. And "how much protein am I still missing?" compares the day with the nutrient goals set on the site, so the agent can suggest what to eat to hit them.
 
 ## Tools
 
@@ -48,6 +48,7 @@ Once connected, food logging stops being a chore of tapping through search scree
 | `get_food_nutrition` | Calories and macros for a quantity, scaled by the site itself. Read-only. |
 | `log_food` | Write an eating record into the diary. |
 | `get_day_summary` | Read back a day's totals. |
+| `get_day_progress` | Compare a day with the goals set on the site: energy, protein, carbs, fat, fibre and every other tracked nutrient (sugar, salt…), drinks and weight — eaten, goal and remaining. |
 | `create_meal` | Save a recipe built from existing foods. |
 | `list_my_meals` | List saved recipes with their ids and total energy. |
 | `log_meal` | Log a whole saved recipe into the diary as one entry. |
@@ -63,7 +64,7 @@ Once connected, food logging stops being a chore of tapping through search scree
 | `add_note` | Add a note to the whole day or to one meal. |
 | `get_usual_items` | List favourite and most used foods and activities. |
 | `set_favorite` | Add a food or activity to favourites, or remove it. |
-| `get_period_overview` | Overview of several days (a week by default): calories, target, activity, macros and drinks per day and on average. |
+| `get_period_overview` | Overview of several days (a week by default): calories, target, activity, macros, tracked nutrients and drinks per day and on average, including averages against the nutrient goals. |
 | `list_templates` / `create_template` | List saved day templates, or save a whole day as a new one. |
 | `apply_template` / `delete_template` | Write a saved template into the diary on chosen dates, or delete it. |
 | `log_weight` | Record your weight for a day (one value per day; logging again replaces it). |
